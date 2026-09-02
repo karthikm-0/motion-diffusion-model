@@ -65,12 +65,13 @@ def main():
     ap.add_argument("--data", default=DEFAULT_DATA)
     ap.add_argument("--split", default="", help="draw prompts from this split")
     ap.add_argument("--text", default="", help="a single prompt (overrides --split)")
-    ap.add_argument("--num_samples", type=int, default=8)
+    ap.add_argument("--num_samples", type=int, default=8, help="0 = every prompt in the split")
     ap.add_argument("--num_repetitions", type=int, default=1,
                     help="samples per prompt -- text->motion is one-to-many, so >1 shows the spread")
     ap.add_argument("--length", type=int, default=0, help="frames; 0 = use the GT length per prompt")
     ap.add_argument("--guidance_param", type=float, default=2.5)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--batch_size", type=int, default=32, help="sampling batch; 0 = all at once")
     ap.add_argument("--out", default="")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
@@ -91,9 +92,10 @@ def main():
         embeds = torch.from_numpy(embed_texts(prompts, args.data)).float()
         lengths = [args.length or 80]
     else:
-        keys = ds.keys[:args.num_samples]
+        n_take = len(ds.keys) if args.num_samples in (0, -1) else args.num_samples
+        keys = ds.keys[:n_take]
         prompts = [ds.captions[k]["scenario"] for k in keys]
-        embeds = torch.from_numpy(ds.text_emb[:args.num_samples]).float()
+        embeds = torch.from_numpy(ds.text_emb[:n_take]).float()
         lengths = [args.length or ds.index[k]["n_frames"] for k in keys]
 
     class _D:  # create_model_and_diffusion only needs .dataset for text_dim/num_actions
@@ -111,19 +113,25 @@ def main():
 
     n = len(keys)
     results = []
+    batch = args.batch_size or n
     for rep in range(args.num_repetitions):
-        maxlen = max(lengths)
+      for lo in range(0, n, batch):
+        hi = min(lo + batch, n)
+        b_keys, b_prompts = keys[lo:hi], prompts[lo:hi]
+        b_embeds, b_lengths = embeds[lo:hi], lengths[lo:hi]
+        nb = hi - lo
+        maxlen = max(b_lengths)
         cond = {"y": {
-            "text_embed": embeds.to(args.device).unsqueeze(0),
-            "lengths": torch.tensor(lengths, device=args.device),
-            "mask": torch.arange(maxlen, device=args.device)[None, :].expand(n, maxlen)
-                    < torch.tensor(lengths, device=args.device)[:, None],
+            "text_embed": b_embeds.to(args.device).unsqueeze(0),
+            "lengths": torch.tensor(b_lengths, device=args.device),
+            "mask": torch.arange(maxlen, device=args.device)[None, :].expand(nb, maxlen)
+                    < torch.tensor(b_lengths, device=args.device)[:, None],
         }}
         cond["y"]["mask"] = cond["y"]["mask"][:, None, None, :]
         if args.guidance_param != 1.0:
-            cond["y"]["scale"] = torch.full((n,), args.guidance_param, device=args.device)
+            cond["y"]["scale"] = torch.full((nb,), args.guidance_param, device=args.device)
 
-        shape = (n, model.njoints if not hasattr(model, "model") else model.model.njoints, 1, maxlen)
+        shape = (nb, model.njoints if not hasattr(model, "model") else model.model.njoints, 1, maxlen)
         with torch.no_grad():
             sample = diffusion.p_sample_loop(
                 model, shape, clip_denoised=False, model_kwargs=cond,
@@ -131,12 +139,12 @@ def main():
                 dump_steps=None, noise=None, const_noise=False)
 
         arr = sample.squeeze(2).permute(0, 2, 1).cpu().numpy()   # [n, T, J]
-        for i, k in enumerate(keys):
-            m = arr[i, :lengths[i]] * std + mean                 # denormalize -> radians
+        for i, k in enumerate(b_keys):
+            m = arr[i, :b_lengths[i]] * std + mean               # denormalize -> radians
             name = "%s__rep%d" % (k, rep) if args.num_repetitions > 1 else k
             np.save(os.path.join(out, name + ".npy"), m.astype(np.float32))
-            results.append(dict(name=name, source_key=k, rep=rep, prompt=prompts[i],
-                                n_frames=int(lengths[i]),
+            results.append(dict(name=name, source_key=k, rep=rep, prompt=b_prompts[i],
+                                n_frames=int(b_lengths[i]),
                                 peak_excursion=float(np.abs(m - m[0]).max()),
                                 path_len=float(np.abs(np.diff(m, axis=0)).sum())))
 

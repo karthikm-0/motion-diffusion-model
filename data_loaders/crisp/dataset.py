@@ -37,6 +37,7 @@ class Crisp(data.Dataset):
                  fixed_len=0, device=None, **kwargs):
         self.datapath = datapath
         self.split = split
+        self.dataname = "crisp"
         self.caption_field = caption_field
         self.fixed_len = int(fixed_len or 0)
 
