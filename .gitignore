@@ -138,3 +138,6 @@ slurm**/
 *.err
 *.slurm
 .vscode/
+
+# crisp dataset cache - regenerate with crisp_vla/src/crisp_vla/prepare_crisp_dataset.py
+dataset/crisp/

@@ -1,0 +1,46 @@
+[project]
+name = "mdm-t1"
+version = "0.1.0"
+description = "Motion Diffusion Model trained on the crisp_vla Booster T1 expressive-behavior dataset"
+requires-python = ">=3.10,<3.11"
+
+dependencies = [
+    # core
+    "torch==2.10.0",
+    "numpy<2",              # the upstream MDM code predates numpy 2
+    "scipy>=1.11",
+    "scikit-learn>=1.3",    # linear probes in prepare_t1_text.py
+    "tqdm",
+    "blobfile",             # guided-diffusion checkpoint io
+    # text encoders (captions are precomputed by prepare_t1_text.py)
+    "transformers>=4.40",   # local CLIP ViT-L/14 text tower
+    "sentence-transformers>=5.0",   # EmbeddingGemma / bge / mpnet path
+    "safetensors",
+    "huggingface-hub",
+    # rendering / logging
+    "matplotlib",
+    "imageio",
+    "imageio-ffmpeg",
+    "tensorboard",
+    "clip",
+    "smplx>=0.1.28",
+    "wandb>=0.29.0",
+    "mujoco>=3.12.0",
+]
+
+[dependency-groups]
+# Only needed for the upstream HumanML3D/SMPL paths, which the T1 dataset does not use.
+# chumpy is broken on modern numpy, so keep it out of the default install.
+humanml = ["spacy", "smplx", "ftfy", "regex"]
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128" }]
+clip = { git = "https://github.com/openai/CLIP.git" }

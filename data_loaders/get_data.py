@@ -18,10 +18,16 @@ def get_dataset_class(name):
     elif name == "kit":
         from data_loaders.humanml.data.dataset import KIT
         return KIT
+    elif name == "crisp":
+        from data_loaders.crisp.dataset import Crisp
+        return Crisp
     else:
         raise ValueError(f'Unsupported dataset name [{name}]')
 
 def get_collate_fn(name, hml_mode='train', pred_len=0, batch_size=1):
+    if name == "crisp":
+        from data_loaders.crisp.dataset import crisp_collate
+        return crisp_collate
     if hml_mode == 'gt':
         from data_loaders.humanml.data.dataset import collate_fn as t2m_eval_collate
         return t2m_eval_collate
@@ -39,6 +45,8 @@ def get_dataset(name, num_frames, split='train', hml_mode='train', abs_path='.',
     if name in ["humanml", "kit"]:
         dataset = DATA(split=split, num_frames=num_frames, mode=hml_mode, abs_path=abs_path, fixed_len=fixed_len, 
                        device=device, autoregressive=autoregressive)
+    elif name == "crisp":
+        dataset = DATA(split=split, num_frames=num_frames, fixed_len=fixed_len, device=device)
     else:
         dataset = DATA(split=split, num_frames=num_frames)
     return dataset

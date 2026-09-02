@@ -19,9 +19,9 @@ from diffusion.fp16_util import MixedPrecisionTrainer
 from diffusion.resample import LossAwareSampler, UniformSampler
 from tqdm import tqdm
 from diffusion.resample import create_named_schedule_sampler
-from data_loaders.humanml.networks.evaluator_wrapper import EvaluatorMDMWrapper
-from eval import eval_humanml, eval_humanact12_uestc
-from sample.generate import main as generate
+# NOTE: the HumanML3D/KIT evaluator stack (and its spacy dependency) is imported
+# lazily inside the two call sites below. Importing it at module scope makes
+# train_mdm.py unimportable for datasets that have no such evaluator.
 from data_loaders.get_data import get_dataset_loader
 from utils.model_util import load_model_wo_clip
 from data_loaders.humanml.scripts.motion_process import get_target_location, sample_goal, get_allowed_joint_options
@@ -116,6 +116,8 @@ class TrainLoop:
             self.eval_gt_data = get_dataset_loader(name=args.dataset, batch_size=args.eval_batch_size, num_frames=None,
                                                    split=args.eval_split,
                                                    hml_mode='gt', device=dist_util.dev())
+            from data_loaders.humanml.networks.evaluator_wrapper import EvaluatorMDMWrapper
+            from eval import eval_humanml
             self.eval_wrapper = EvaluatorMDMWrapper(args.dataset, dist_util.dev())
             self.eval_data = {
                 'test': lambda: eval_humanml.get_mdm_loader(self.args,
@@ -258,6 +260,7 @@ class TrainLoop:
             log_file = os.path.join(self.save_dir, f'eval_humanml_{(self.total_step()):09d}.log')
             diversity_times = 300
             mm_num_times = 0  # mm is super slow hence we won't run it during training
+            from eval import eval_humanml
             eval_dict = eval_humanml.evaluation(
                 self.eval_wrapper, self.eval_gt_data, self.eval_data, log_file,
                 replication_times=self.args.eval_rep_times, diversity_times=diversity_times, mm_num_times=mm_num_times, run_mm=False)
@@ -277,6 +280,7 @@ class TrainLoop:
                                         batch_size=self.args.eval_batch_size, device=self.device, guidance_param = 1,
                                         dataset=self.dataset, unconstrained=self.args.unconstrained,
                                         model_path=os.path.join(self.save_dir, self.ckpt_file_name()))
+            from eval import eval_humanact12_uestc
             eval_dict = eval_humanact12_uestc.evaluate(eval_args, model=self.model, diffusion=self.diffusion, data=self.data.dataset)
             print(f'Evaluation results on {self.dataset}: {sorted(eval_dict["feats"].items())}')
             for k, v in eval_dict["feats"].items():
@@ -377,6 +381,7 @@ class TrainLoop:
         if gen_args.multi_target_cond:
             gen_args.sampling_mode = 'goal'
             gen_args.target_joint_source = 'data'
+        from sample.generate import main as generate  # lazy: pulls the HumanML3D plotting stack
         all_sample_save_path = generate(gen_args)
         self.train_platform.report_media(title='Motion', series='Predicted Motion', iteration=self.total_step(),
                                          local_path=all_sample_save_path)        

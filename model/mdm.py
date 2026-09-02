@@ -120,8 +120,14 @@ class MDM(nn.Module):
                     self.clip_model = load_bert(bert_model_path)  # Sorry for that, the naming is for backward compatibility
                     self.encode_text = self.bert_encode_text
                     self.clip_dim = 768
+                elif self.text_encoder_type == 'precomputed':
+                    # Captions are embedded offline (see crisp_vla prepare_crisp_text.py)
+                    # and arrive as cond['y']['text_embed'], so no encoder is built or
+                    # trained here. Swapping encoders is re-running that script.
+                    print('Using precomputed text embeddings (dim %d)' % self.clip_dim)
+                    self.encode_text = self._precomputed_text_missing
                 else:
-                    raise ValueError('We only support [CLIP, BERT] text encoders') 
+                    raise ValueError('We only support [CLIP, BERT, precomputed] text encoders') 
                 
                 self.embed_text = nn.Linear(self.clip_dim, self.latent_dim)
                 
@@ -132,7 +138,20 @@ class MDM(nn.Module):
         self.output_process = OutputProcess(self.data_rep, self.input_feats, self.latent_dim, self.njoints,
                                             self.nfeats)
 
-        self.rot2xyz = Rotation2xyz(device='cpu', dataset=self.dataset)
+        # Rotation2xyz builds a SMPL body model. Datasets that carry their own joint
+        # representation (e.g. 'crisp', a 10-DoF robot) never call it, and the SMPL
+        # assets are a large optional download, so failing to build it is not fatal.
+        try:
+            self.rot2xyz = Rotation2xyz(device='cpu', dataset=self.dataset)
+        except Exception as exc:
+            print('MDM: Rotation2xyz unavailable (%s: %s); rot2xyz disabled.'
+                  % (type(exc).__name__, exc))
+            self.rot2xyz = None
+
+    def _precomputed_text_missing(self, raw_text):
+        raise RuntimeError(
+            "text_encoder_type='precomputed' requires cond['y']['text_embed']; "
+            "none was supplied. Check the collate fn for this dataset.")
 
     def parameters_wo_clip(self):
         return [p for name, p in self.named_parameters() if not name.startswith('clip_model.')]
@@ -285,12 +304,14 @@ class MDM(nn.Module):
 
     def _apply(self, fn):
         super()._apply(fn)
-        self.rot2xyz.smpl_model._apply(fn)
+        if self.rot2xyz is not None:
+            self.rot2xyz.smpl_model._apply(fn)
 
 
     def train(self, *args, **kwargs):
         super().train(*args, **kwargs)
-        self.rot2xyz.smpl_model.train(*args, **kwargs)
+        if self.rot2xyz is not None:
+            self.rot2xyz.smpl_model.train(*args, **kwargs)
 
 
 class PositionalEncoding(nn.Module):

@@ -97,7 +97,7 @@ def add_model_options(parser):
                        choices=['trans_enc', 'trans_dec', 'gru'], type=str,
                        help="Architecture types as reported in the paper.")
     group.add_argument("--text_encoder_type", default='clip',
-                       choices=['clip', 'bert'], type=str, help="Text encoder type.")
+                       choices=['clip', 'bert', 'precomputed'], type=str, help="Text encoder type.")
     group.add_argument("--emb_trans_dec", action='store_true',
                        help="For trans_dec architecture only, if true, will inject condition as a class token"
                             " (in addition to cross-attention).")
@@ -136,7 +136,7 @@ def add_model_options(parser):
 
 def add_data_options(parser):
     group = parser.add_argument_group('dataset')
-    group.add_argument("--dataset", default='humanml', choices=['humanml', 'kit', 'humanact12', 'uestc'], type=str,
+    group.add_argument("--dataset", default='humanml', choices=['humanml', 'kit', 'humanact12', 'uestc', 'crisp'], type=str,
                        help="Dataset name (choose from list).")
     group.add_argument("--data_dir", default="", type=str,
                        help="If empty, will use defaults according to the specified dataset.")
@@ -269,7 +269,7 @@ def add_evaluation_options(parser):
 def get_cond_mode(args):
     if args.unconstrained:
         cond_mode = 'no_cond'
-    elif args.dataset in ['kit', 'humanml']:
+    elif args.dataset in ['kit', 'humanml', 'crisp']:
         cond_mode = 'text'
     else:
         cond_mode = 'action'

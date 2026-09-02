@@ -47,12 +47,22 @@ def get_model_args(args, data):
         data_rep = 'hml_vec'
         njoints = 251
         nfeats = 1
+    elif args.dataset == 'crisp':
+        # 10 upper-body joint angles of the 23-DoF Booster T1 at 20 fps. 'hml_vec'
+        # only selects the plain-Linear in/out path in InputProcess/OutputProcess,
+        # which is representation-agnostic -- no HumanML3D geometry is implied.
+        data_rep = 'hml_vec'
+        njoints = 10
+        nfeats = 1
 
     # Compatibility with old models
     if not hasattr(args, 'pred_len'):
         args.pred_len = 0
         args.context_len = 0
     
+    # dim of the (precomputed) caption embedding feeding embed_text
+    clip_dim = getattr(getattr(data, 'dataset', None), 'text_dim', 512)
+
     emb_policy = args.__dict__.get('emb_policy', 'add')
     multi_target_cond = args.__dict__.get('multi_target_cond', False)
     multi_encoder_type = args.__dict__.get('multi_encoder_type', 'multi')
@@ -62,6 +72,7 @@ def get_model_args(args, data):
             'translation': True, 'pose_rep': 'rot6d', 'glob': True, 'glob_rot': True,
             'latent_dim': args.latent_dim, 'ff_size': 1024, 'num_layers': args.layers, 'num_heads': 4,
             'dropout': 0.1, 'activation': "gelu", 'data_rep': data_rep, 'cond_mode': cond_mode,
+            'clip_dim': clip_dim,
             'cond_mask_prob': args.cond_mask_prob, 'action_emb': action_emb, 'arch': args.arch,
             'emb_trans_dec': args.emb_trans_dec, 'clip_version': clip_version, 'dataset': args.dataset,
             'text_encoder_type': args.text_encoder_type,
