@@ -103,6 +103,10 @@ def create_gaussian_diffusion(args):
     else:
         lambda_target_loc = 0.
 
+    # Datasets whose channels are all real joints must keep every channel in the
+    # velocity loss; SMPL-style reps hold root translation in the last one.
+    vel_loss_drop_last = args.dataset not in ('crisp',)
+
     return SpacedDiffusion(
         use_timesteps=space_timesteps(steps, timestep_respacing),
         betas=betas,
@@ -124,6 +128,7 @@ def create_gaussian_diffusion(args):
         lambda_rcxyz=args.lambda_rcxyz,
         lambda_fc=args.lambda_fc,
         lambda_target_loc=lambda_target_loc,
+        vel_loss_drop_last=vel_loss_drop_last,
     )
 
 def load_saved_model(model, model_path, use_avg: bool=False):  # use_avg_model

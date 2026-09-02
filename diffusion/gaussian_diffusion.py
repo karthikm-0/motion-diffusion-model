@@ -136,6 +136,7 @@ class GaussianDiffusion:
         lambda_root_vel=0.,
         lambda_vel_rcxyz=0.,
         lambda_fc=0.,
+        vel_loss_drop_last=True,
         lambda_target_loc=0.,
         **kargs,
     ):
@@ -157,6 +158,10 @@ class GaussianDiffusion:
         self.lambda_root_vel = lambda_root_vel
         self.lambda_vel_rcxyz = lambda_vel_rcxyz
         self.lambda_fc = lambda_fc
+        # SMPL rot6d keeps root translation in the final channel, so upstream excludes
+        # it from the velocity loss. Representations whose channels are all real joints
+        # set this False -- dropping one would silently omit a genuine DoF.
+        self.vel_loss_drop_last = vel_loss_drop_last
 
         if self.lambda_rcxyz > 0. or self.lambda_vel > 0. or self.lambda_root_vel > 0. or \
                 self.lambda_vel_rcxyz > 0. or self.lambda_fc > 0. or self.lambda_target_loc > 0.:
@@ -1334,8 +1339,9 @@ class GaussianDiffusion:
             if self.lambda_vel > 0.:
                 target_vel = (target[..., 1:] - target[..., :-1])
                 model_output_vel = (model_output[..., 1:] - model_output[..., :-1])
-                terms["vel_mse"] = self.masked_l2(target_vel[:, :-1, :, :], # Remove last joint, is the root location!
-                                                  model_output_vel[:, :-1, :, :],
+                chan = slice(0, -1) if self.vel_loss_drop_last else slice(None)
+                terms["vel_mse"] = self.masked_l2(target_vel[:, chan, :, :],
+                                                  model_output_vel[:, chan, :, :],
                                                   mask[:, :, :, 1:])  # mean_flat((target_vel - model_output_vel) ** 2)
             
             if self.lambda_target_loc > 0.:
