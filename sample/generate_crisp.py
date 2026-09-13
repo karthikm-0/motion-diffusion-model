@@ -120,7 +120,13 @@ def main():
         b_keys, b_prompts = keys[lo:hi], prompts[lo:hi]
         b_embeds, b_lengths = embeds[lo:hi], lengths[lo:hi]
         nb = hi - lo
-        maxlen = max(b_lengths)
+        # Every training sequence was padded to args.num_frames, so that is the only
+        # canvas the model ever saw. Sampling on a shorter canvas is off-distribution
+        # and makes output amplitude swing erratically (0.03 -> 1.13 for one caption).
+        # Generate on the full canvas and truncate to the requested length below.
+        canvas = int(getattr(targs, "num_frames", 201) or 201)
+        b_lengths = [min(x, canvas) for x in b_lengths]
+        maxlen = canvas
         cond = {"y": {
             "text_embed": b_embeds.to(args.device).unsqueeze(0),
             "lengths": torch.tensor(b_lengths, device=args.device),
